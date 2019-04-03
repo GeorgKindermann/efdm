@@ -1,3 +1,0 @@
-data DEnomgmtdata.txt
-prior newprior.txt
-species=1 siteclass=1

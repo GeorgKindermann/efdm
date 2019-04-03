@@ -1,5 +1,0 @@
-vol 1 2 3 4 5 6 7 8 9 10
-age 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18
-owner communal land national private
-nuts DE1 DE2 DE3_4 DE7 DE8 DE9_5_6 DEA DEB DEC DED DEE DEF DEG
-species beech spruce

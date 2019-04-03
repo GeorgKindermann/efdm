@@ -1,3 +1,0 @@
-nomgmt read nomgmtP_oak.RData vol age
-thin read thinP_oak.RData vol age
-finalfell read ffellP_oak.txt vol age

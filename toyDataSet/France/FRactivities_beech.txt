@@ -1,3 +1,0 @@
-nomgmt read nomgmtP_beech.RData vol age
-thin read thinP_beech.RData vol age
-finalfell read ffellP_beech.txt vol age
