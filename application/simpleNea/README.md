@@ -7,4 +7,3 @@ Show simple usage of the EFDM-nea with the following steps:
 3. Run Efdm
 4. Compare Model estimates with observations
 
-I'm not able to reproduce the change form timestep0 to timestep1 with EFDM.

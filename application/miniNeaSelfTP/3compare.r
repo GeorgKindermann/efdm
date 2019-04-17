@@ -26,7 +26,7 @@ with(t1, text(stem, vol, round(obs1)))
 tt <- matrix(0, nrow = max(me$stem), ncol = max(me$vol))
 tt[cbind(t1$stem, t1$vol)] <- t1$nomgmt.1
 image(1:max(me$stem), 1:max(me$vol), tt, xlab="Stem Class", ylab="Volume Class", main="Predicted Area")
-with(t1, text(stem, vol, round(nomgmt.1,2)))
+with(t1, text(stem, vol, round(nomgmt.1)))
 
 tt <- matrix(0, nrow = max(me$stem), ncol = max(me$vol))
 tt[cbind(t1$stem, t1$vol)] <- t1$obs1 - t1$nomgmt.1
