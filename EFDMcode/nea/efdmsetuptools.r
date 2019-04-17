@@ -66,7 +66,8 @@ pre.estimate<-function(inputfilename,factorsfilename,changing,resultfilename)
   #(with the needed data and possible prior available of course)
 {
   setupstatespace(factorsfilename)
-  basedimnames<<-strsplit("stem vol",split=" ")[[1]]
+  #basedimnames<<-strsplit("stem vol",split=" ")[[1]] #gk
+  basedimnames <<- strsplit(changing, split=" ")[[1]] #gk
   otherdimnames<<-setdiff(factnames,basedimnames)
   basedim<<-prod(factdims[basedimnames])
   otherdim<<-factdims[otherdimnames]
