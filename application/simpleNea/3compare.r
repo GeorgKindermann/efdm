@@ -51,6 +51,12 @@ for(si in unique(me$si)) {
   with(me[me$si==si,], text(stem, vol, round(oArea - eArea)))
   readline()
 }
+#overall
+t3 <- with(me, aggregate(list(oArea=oArea, eArea=eArea), list(vol=vol, stem=stem), FUN=sum))
+tt <- matrix(0, nrow = max(me$stem), ncol = max(me$vol))
+tt[cbind(t3$stem, t3$vol)] <- t3$oArea - t3$eArea
+image(1:max(me$stem), 1:max(me$vol), tt, xlab="Stem Class", ylab="Volume Class", main="Observed - Estimated Area")
+with(t3, text(stem, vol, round(oArea - eArea)))
 
 
 ##Compare harvest

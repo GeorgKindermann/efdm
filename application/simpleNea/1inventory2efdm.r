@@ -189,6 +189,40 @@ t1$vol1[is.na(t1$vol1)] <- t1$vol0[is.na(t1$vol1)]
 t1$stem1[is.na(t1$stem1)] <- t1$stem0[is.na(t1$stem1)]
 write.table(t1[rep(seq_len(nrow(t1)), t1$area),1:5], "./dat/dNoman.txt", row.names = FALSE)
 rm(t1)
+#Create prior table
+t1 <- aggregate(area ~ cv0 + cv1 + cstem0 + cstem1, data=dat[dat$man=="nomgmt",], FUN=sum)
+t2 <- expand.grid(sapply(nClasses[c("vol","stem")], function(x) 1:x))
+names(t2) <- c("cv0", "cstem0")
+#a <- loess(cv1-cv0 ~ cv0 + cstem0, data=t1, weights=area)
+#predict(a, newdata=t2)
+library(mgcv)
+a <- gam(I(cv1-cv0) ~ s(cv0, cstem0), data=t1, weights=area)
+t2$dcv <- pmin(max(t1$cv1 - t1$cv0), pmax(min(t1$cv1 - t1$cv0), predict(a, newdata=t2)))
+a <- gam(I(cstem1-cstem0) ~ s(cv0, cstem0), data=t1, weights=area)
+t2$dcstem <- pmin(max(t1$cstem1 - t1$cstem0), pmax(min(t1$cstem1 - t1$cstem0), predict(a, newdata=t2)))
+#tt <- matrix(NA, nrow = max(t2$cstem0), ncol = max(t2$cv0))
+#tt[cbind(t2$cstem0, t2$cv0)] <- t2$dcv
+#tt[cbind(t2$cstem0, t2$cv0)] <- t2$dcstem
+#image(tt, xlab="Stem Class", ylab="Volume Class")
+#contour(tt, add=T)
+tt <- with(t2, data.frame(cv0, cstem0, cv1c=cv0+ceiling(dcv), cstem1c=cstem0+ceiling(dcstem), cv1f=cv0+floor(dcv), cstem1f=cstem0+floor(dcstem), scvf=dcv%%1, scsf=dcstem%%1))
+tt <- apply(tt, 1, function(x) {data.frame(cv0=x["cv0"], cstem0=x["cstem0"], expand.grid(cv1=x[c("cv1f", "cv1c")], cstem1=x[c("cstem1f", "cstem1c")]), area=c(x["scvf"]+x["scsf"], 1-x["scvf"]+x["scsf"], x["scvf"]+1-x["scsf"], 1-x["scvf"]+1-x["scsf"])/4)})
+#tt <- do.call("rbind", tt)
+tt <- Reduce(rbind, tt)
+tt$cv1[tt$cv1<1] <- 1
+tt$cv1[tt$cv1>nClasses["vol"]] <- nClasses["vol"]
+tt$cstem1[tt$cstem1<1] <- 1
+tt$cstem1[tt$cstem1>nClasses["stem"]] <- nClasses["stem"]
+t1 <- aggregate(area ~ cv0 + cv1 + cstem0 + cstem1, data=dat[dat$man=="nomgmt",], FUN=sum)
+t2 <- expand.grid(sapply(nClasses[c("vol","stem")], function(x) 1:x))
+names(t2) <- c("cv0", "cstem0")
+me <- merge(t2, t1, all.x=T)
+me <- rbind(me, merge(me[!complete.cases(me),c("cv0", "cstem0")], tt))
+me <- me[complete.cases(me),]
+NROW(merge(t2, me, all.x=T))
+me <- rbind(me, with(t2, data.frame(cv0, cstem0, cv1=cv0, cstem1=cstem0, area=0)))
+tt <- prop.table(xtabs(area~I(cstem1*nClasses["vol"]+cv1)+I(cstem0*nClasses["vol"]+cv0), me, addNA=T), 2)
+write.table(tt, "./dat/dPrior.txt", row.names=F, col.names=F)
 #
 #estimate transition probabilities
 ##Create estimation control file
@@ -197,7 +231,7 @@ rm(t1)
 ##si=1 .. the order of factors, "from most influential to least influential", 
 ##together with corresponding weights
 cat("data ./dat/dNoman.txt
-prior uninformative
+prior ./dat/dPrior.txt
 si=1
 ", file="./dat/estiminput.txt")
 ##levels of the classes
