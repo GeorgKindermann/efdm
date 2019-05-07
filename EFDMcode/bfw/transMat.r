@@ -2,19 +2,19 @@ transMatWP <- function(x, weight, prior) {
   freq <- xtabs(area~., x, addNA=T)
   t1 <- sapply(x[,-NCOL(x)], nlevels)
   tt <- c(t1[1]*t1[2], t1[3]*t1[4])
-  if(length(t1>4)) {tt <- c(tt, t1[5:length(t1)])}
+  if(length(t1)>4) {tt <- c(tt, t1[5:length(t1)])}
   dim(freq) <- tt
   s <- prior
-  for(i in 2:length(tt)) {
+  for(i in length(dim(prior)):length(tt)) {
     tmp <- apply(freq, 1:i, sum)
     #if(weight[i-1] == 1) {
       t1 <- which(colSums(tmp) == 0, arr.ind = TRUE)
       t1 <- matrix(t1, ncol=NCOL(t1))
-      tmp[cbind(rep(seq_len(NROW(tmp)), each = NROW(t1)), t1[rep(1:nrow(t1), NROW(tmp)), ])] <- s[cbind(rep(seq_len(NROW(tmp)), each = NROW(t1)), t1[rep(1:nrow(t1), NROW(tmp)), seq_len(max(1,NCOL(t1)-1))])]
+      tmp[cbind(rep(seq_len(NROW(tmp)), each = NROW(t1)), t1[rep(1:nrow(t1), NROW(tmp)), ])] <- s[cbind(rep(seq_len(NROW(s)), each = NROW(t1)), t1[rep(1:nrow(t1), NROW(s)), seq_len(min(length(dim(s))-1,NCOL(t1)))])]
     #}
     tmp <- prop.table(tmp,2:length(dim(tmp)))
     #tmp[is.na(tmp)] <- 0
-    s <- sweep(tmp*weight[i-1], 1:max(2,i-1), s*(1-weight[i-1]), '+')
+    s <- sweep(tmp*weight[i-1], 1:length(dim(s)), s*(1-weight[i-1]), '+')
     #s <- prop.table(s,2:length(dim(s)))
   }
   #prop.table(s,2:length(tt))
@@ -31,54 +31,124 @@ getPriorIJ <- function(i, j, di, dj) {
 }
 
 getPriorObs <- function(x, di=0, dj=0) {
-  tt <- expand.grid(levels(x[,3]), levels(x[,4]))
-  names(tt) <- names(x[,3:4])
+  tt <- expand.grid(sapply(3:(NCOL(x)-1), function(i) levels(x[,i])))
+  names(tt) <- names(x[,3:(NCOL(x)-1)])
   me <- merge(x, tt, all.y=T)
   me <- me[names(x)]
   me[is.na(me[,NCOL(me)]), NCOL(me)] <- 1
-  
-  tt[,names(x[,1:2])] <- tt
-  tt[,3] <- levels(tt[,3])[pmax(1, pmin(nlevels(tt[,3]), match(tt[,3], levels(tt[,3])) + di))]
-  tt[,4] <- levels(tt[,4])[pmax(1, pmin(nlevels(tt[,4]), match(tt[,4], levels(tt[,4])) + di))]
-  tt <- tt[names(x)[1:4]]
+
+  tt[,names(x[,1:2])] <- tt[,1:2]
+  tt <- tt[names(x)[1:(NCOL(x)-1)]]
+  tt[,1] <- levels(tt[,1])[pmax(1, pmin(nlevels(tt[,1]), match(tt[,1], levels(tt[,1])) + di))]
+  tt[,2] <- levels(tt[,2])[pmax(1, pmin(nlevels(tt[,2]), match(tt[,2], levels(tt[,2])) + dj))]
   t1 <- !complete.cases(me[,1:2])
   me[t1,1:2] <- tt[match(interaction(me[t1,3:4]), interaction(tt[,3:4])),1:2]
+  
+  freq <- xtabs(as.formula(paste0(names(me)[NCOL(me)], "~.")), me, addNA=T)
+  if(NCOL(x)>5) {
+    dim(freq) <- c(nlevels(x[,1])*nlevels(x[,2]), nlevels(x[,3])*nlevels(x[,4]), sapply(5:(NCOL(x)-1), function(i) nlevels(x[,i])))
+  } else {
+    dim(freq) <- c(nlevels(x[,1])*nlevels(x[,2]), nlevels(x[,3])*nlevels(x[,4]))
+  }
+  prop.table(freq,2:length(dim(freq)))
+}
 
-  freq <- xtabs(as.formula(paste0(names(me)[NCOL(me)], "~.")), me[,c(1:4,NCOL(me))], addNA=T)
-  dim(freq) <- c(nlevels(x[,1])*nlevels(x[,2]), nlevels(x[,3])*nlevels(x[,4]))
-  prop.table(freq,2)
+require(MASS)
+getPriorLda <- function(x) {
+  tt <- data.frame(x[1:2], apply(x[,c(3:NCOL(x))], 2, as.numeric))
+  a1 <- lda(as.formula(paste0(names(tt)[1], " ~ ", paste(names(tt)[3:(NCOL(tt)-1)], collapse=" + "))), data=tt, weights=tt[NCOL(tt)])
+  a2 <- lda(as.formula(paste0(names(tt)[2], " ~ ", paste(names(tt)[3:(NCOL(tt)-1)], collapse=" + "))), data=tt, weights=tt[NCOL(tt)])
+
+  tt <- expand.grid(sapply(3:(NCOL(x)-1), function(i) as.numeric(levels(x[,i]))))
+  names(tt) <- names(x[,3:(NCOL(x)-1)])
+
+  t1 <- predict(a1, tt)$posterior
+  t2 <- predict(a2, tt)$posterior
+  tt <- sapply(seq_len(NROW(t1)), function(i) {t1[i,] * rep(t2[i,], each=NCOL(t1))})
+  if(NCOL(x)>5) {
+    dim(tt) <- c(nlevels(x[,1])*nlevels(x[,2]), nlevels(x[,3])*nlevels(x[,4]), sapply(5:(NCOL(x)-1), function(i) nlevels(x[,i])))
+  } else {
+    dim(tt) <- c(nlevels(x[,1])*nlevels(x[,2]), nlevels(x[,3])*nlevels(x[,4]))
+  }
+  tt
 }
 
 require(randomForest)
 getPriorRF <- function(x) {
-  tt <- data.frame(x[,1:2], apply(x[,c(3:4,NCOL(x))], 2, as.numeric))
-  a1 <- randomForest(as.formula(paste0(names(tt)[1], " ~ ", names(tt)[3], " + ", names(tt)[4])), data=tt, weights=tt$area)
-  a2 <- randomForest(as.formula(paste0(names(tt)[2], " ~ ", names(tt)[3], " + ", names(tt)[4])), data=tt, weights=tt$area)
+  tt <- data.frame(x[1:2], apply(x[,c(3:NCOL(x))], 2, as.numeric))
+  a1 <- randomForest(as.formula(paste0(names(tt)[1], " ~ ", paste(names(tt)[3:(NCOL(tt)-1)], collapse=" + "))), data=tt, weights=tt[NCOL(tt)])
+  a2 <- randomForest(as.formula(paste0(names(tt)[2], " ~ ", paste(names(tt)[3:(NCOL(tt)-1)], collapse=" + "))), data=tt, weights=tt[NCOL(tt)])
 
-  tt <- expand.grid(as.numeric(levels(x[,3])), as.numeric(levels(x[,4])))
-  names(tt) <- names(x[,3:4])
+  tt <- expand.grid(sapply(3:(NCOL(x)-1), function(i) as.numeric(levels(x[,i]))))
+  names(tt) <- names(x[,3:(NCOL(x)-1)])
 
   t1 <- predict(a1, tt, type = "prob")
   t2 <- predict(a2, tt, type = "prob")
-  sapply(seq_len(NROW(t1)), function(i) {t1[i,] * rep(t2[i,], each=NCOL(t1))})
+  tt <- sapply(seq_len(NROW(t1)), function(i) {t1[i,] * rep(t2[i,], each=NCOL(t1))})
+  if(NCOL(x)>5) {
+    dim(tt) <- c(nlevels(x[,1])*nlevels(x[,2]), nlevels(x[,3])*nlevels(x[,4]), sapply(5:(NCOL(x)-1), function(i) nlevels(x[,i])))
+  } else {
+    dim(tt) <- c(nlevels(x[,1])*nlevels(x[,2]), nlevels(x[,3])*nlevels(x[,4]))
+  }
+  tt
 }
 
 require(e1071)
 getPriorSvm <- function(x) {
-  tt <- data.frame(x[,1:2], apply(x[,c(3:4,NCOL(x))], 2, as.numeric))
-  a1 <- svm(as.formula(paste0(names(tt)[1], " ~ ", names(tt)[3], " + ", names(tt)[4])), data=tt, weights=tt$area, probability = T)
-  a2 <- svm(as.formula(paste0(names(tt)[2], " ~ ", names(tt)[3], " + ", names(tt)[4])), data=tt, weights=tt$area, probability = T)
+  tt <- data.frame(x[1:2], apply(x[,c(3:NCOL(x))], 2, as.numeric))
+  a1 <- svm(as.formula(paste0(names(tt)[1], " ~ ", paste(names(tt)[3:(NCOL(tt)-1)], collapse=" + "))), data=tt, weights=tt[NCOL(tt)], probability = T)
+  a2 <- svm(as.formula(paste0(names(tt)[2], " ~ ", paste(names(tt)[3:(NCOL(tt)-1)], collapse=" + "))), data=tt, weights=tt[NCOL(tt)], probability = T)
 
-  tt <- expand.grid(as.numeric(levels(x[,3])), as.numeric(levels(x[,4])))
-  names(tt) <- names(x[,3:4])
+  tt <- expand.grid(sapply(3:(NCOL(x)-1), function(i) as.numeric(levels(x[,i]))))
+  names(tt) <- names(x[,3:(NCOL(x)-1)])
 
   t1 <- attr(predict(a1, tt, probability = T), "probabilities")
   t2 <- attr(predict(a2, tt, probability = T), "probabilities")
-  sapply(seq_len(NROW(t1)), function(i) {t1[i,] * rep(t2[i,], each=NCOL(t1))})
+  tt <- sapply(seq_len(NROW(t1)), function(i) {t1[i,] * rep(t2[i,], each=NCOL(t1))})
+  if(NCOL(x)>5) {
+    dim(tt) <- c(nlevels(x[,1])*nlevels(x[,2]), nlevels(x[,3])*nlevels(x[,4]), sapply(5:(NCOL(x)-1), function(i) nlevels(x[,i])))
+  } else {
+    dim(tt) <- c(nlevels(x[,1])*nlevels(x[,2]), nlevels(x[,3])*nlevels(x[,4]))
+  }
+  tt
 }
 
-#transMatRF <- function(x) {
-#}
+transMat2LT <- function(x, mat) {
+  tt <- data.frame(
+    factor(levels(x[,1])[1 + (slice.index(mat, 1)-1) %% nlevels(x[,1])], levels=levels(x[,1]), ordered=is.ordered(x[,1])),
+    factor(levels(x[,2])[1 + floor((slice.index(mat, 1)-1) / nlevels(x[,1]))], levels=levels(x[,2]), ordered=is.ordered(x[,2])),
+    factor(levels(x[,3])[1 + (slice.index(mat, 2)-1) %% nlevels(x[,3])], levels=levels(x[,3]), ordered=is.ordered(x[,3])),
+    factor(levels(x[,4])[1 + floor((slice.index(mat, 2)-1) / nlevels(x[,3]))], levels=levels(x[,4]), ordered=is.ordered(x[,4]))
+  )
+  if(NCOL(x)>5) {
+    tt <- cbind(tt, as.data.frame(lapply(5:(NCOL(x)-1), function(i) factor(levels(x[,i])[slice.index(mat, i-2)], levels=levels(x[,i]), ordered=is.ordered(x[,i])))))
+  }
+  tt <- cbind(tt, as.vector(mat))
+  names(tt) <- names(x)
+  tt <- tt[tt[,NCOL(tt)] > 0,]
+  tt
+}
 
-#transMatSvm <- function(x) {
-#}
+
+#library(mda)
+#mda(vol~.,data=x)
+#fda(vol~.,data=x)
+
+#library(MASS)
+#qda(vol~.,data=x)
+
+#library(klaR)
+#rda(vol~.,data=x)
+
+#library(nnet)
+#nnet(vol~.,data=x)
+
+#library(kernlab)
+#ksvm(vol~.,data=x)
+
+#library(caret)
+#knn3(vol~.,data=x)
+
+#library(e1071)
+#naiveBayes(vol~.,data=x)
+
