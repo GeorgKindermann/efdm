@@ -206,6 +206,9 @@ rm(basedim,basedimnames,otherdim,otherdimnames,transmat.forthisround,lvlnames,
 
 #setting up the initial state and the probabilities of activities
 statespace<-read.table(INITSTATE_FILENAME,header=TRUE)
+#gk: set all not defined level cominations to 0
+statespace <- merge(expand.grid(factlvls), statespace, all=T) #gk
+statespace[is.na(statespace)] <- 0 #gk
 actprobtable<-read.table(ACTPROBS_FILENAME,header=TRUE)
 #this next merge is a bit dumb but the fixing of factor levels and ordering
 #needs to be done for both, so I'm doing it at once

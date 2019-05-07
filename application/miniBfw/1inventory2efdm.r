@@ -30,8 +30,9 @@ dat$stem1 <- factor(dat$stem1, levels=seq_len(nClasses["stem"]), ordered=TRUE)
 dat$si <- factor(dat$si, levels=seq_len(nClasses["si"]), ordered=TRUE)
 
 #Initial state from where the simulatin starts
-t1 <- merge(expand.grid(sapply(nClasses, function(x) 1:x)), with(dat, aggregate(list(area=area), list(stem=stem0, si=si, vol=vol0), FUN=sum)), all.x=T)
-t1$area[is.na(t1$area)] <- 0
+#t1 <- merge(expand.grid(sapply(nClasses, function(x) 1:x)), with(dat, aggregate(list(area=area), list(stem=stem0, si=si, vol=vol0), FUN=sum)), all.x=T)
+#t1$area[is.na(t1$area)] <- 0
+t1 <- with(dat, aggregate(list(area=area), list(stem=stem0, si=si, vol=vol0), FUN=sum))
 write.table(t1, "./dat/initstate.txt", row.names = FALSE)
 rm(t1)
 
