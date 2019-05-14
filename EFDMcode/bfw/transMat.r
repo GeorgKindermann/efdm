@@ -53,7 +53,7 @@ getPriorObs <- function(x, di=0, dj=0) {
   prop.table(freq,2:length(dim(freq)))
 }
 
-require(MASS)
+if(require(MASS)) {
 getPriorLda <- function(x) {
   tt <- data.frame(x[1:2], apply(x[,c(3:NCOL(x))], 2, as.numeric))
   a1 <- lda(as.formula(paste0(names(tt)[1], " ~ ", paste(names(tt)[3:(NCOL(tt)-1)], collapse=" + "))), data=tt, weights=tt[NCOL(tt)])
@@ -72,8 +72,9 @@ getPriorLda <- function(x) {
   }
   tt
 }
+}
 
-require(randomForest)
+if(require(randomForest)) {
 getPriorRF <- function(x) {
   tt <- data.frame(x[1:2], apply(x[,c(3:NCOL(x))], 2, as.numeric))
   a1 <- randomForest(as.formula(paste0(names(tt)[1], " ~ ", paste(names(tt)[3:(NCOL(tt)-1)], collapse=" + "))), data=tt, weights=tt[NCOL(tt)])
@@ -92,8 +93,9 @@ getPriorRF <- function(x) {
   }
   tt
 }
+}
 
-require(e1071)
+if(require(e1071)) {
 getPriorSvm <- function(x) {
   tt <- data.frame(x[1:2], apply(x[,c(3:NCOL(x))], 2, as.numeric))
   a1 <- svm(as.formula(paste0(names(tt)[1], " ~ ", paste(names(tt)[3:(NCOL(tt)-1)], collapse=" + "))), data=tt, weights=tt[NCOL(tt)], probability = T)
@@ -112,6 +114,7 @@ getPriorSvm <- function(x) {
   }
   tt
 }
+}
 
 transMat2LT <- function(x, mat) {
   tt <- data.frame(
@@ -129,6 +132,43 @@ transMat2LT <- function(x, mat) {
   tt
 }
 
+if(require(MASS)) {
+  fillEmptyTarget <- function(x) {
+    res <- x[0,]
+    for(j in 1:2) {
+      t1 <- as.data.frame(as.numeric(as.character(setdiff(levels(x[,j]), x[,j]))))
+      if(NROW(t1) > 0) {
+        colnames(t1) <- names(x)[j]
+        t2 <- x[0,][seq_len(NROW(t1)),]
+        t2[,j] <- factor(t1[,1], levels=levels(t2[,j]), ordered=is.ordered(t2[,j]))
+        t2[,NCOL(t2)] <- mean(x[,NCOL(x)])/NROW(t2)/100
+        for(i in setdiff(seq_len(NCOL(x)-1), j)) {
+          a <- lda(as.formula(paste0(names(x)[i], " ~ as.numeric(as.character(", names(x)[j],"))")), data=x)
+          t2[,i] <- predict(a, t1)$class
+        }
+        res <- rbind(res, t2)
+      }
+    }
+    res
+  }
+}
+
+getTrans <- function(x, tre=0) {
+  sapply(1:2, function(i) {
+    t1 <- sort(xtabs(as.formula(paste0(names(x)[NCOL(x)], " ~ I(match(", names(x)[i], ", levels(", names(x)[i], ")) - match(", names(x)[i+2], ", levels(", names(x)[i+2], ")))")), data=x))
+    as.integer(names(t1)[cumsum(t1) > sum(t1*tre)])
+  }, simplify = F)
+}
+
+cutLT <- function(lt, trans) {
+  res <- lt
+  for(i in 1:2) {
+    tt <- unique(data.frame(levels(lt[,i+2]), levels(lt[,i+2])[pmax(1, pmin(nlevels(lt[,i+2]), seq_len(nlevels(lt[,i+2])) + rep(trans[[i]], each=nlevels(lt[,i+2]))))]))
+    names(tt) <- names(lt)[c(i+2,i)]
+    res <- merge(res, tt)
+  }
+  res[names(lt)]
+}
 
 #library(mda)
 #mda(vol~.,data=x)

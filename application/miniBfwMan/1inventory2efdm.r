@@ -97,7 +97,6 @@ weight <- c(1,1)
 tt <- transMatWP(x,weight,prior)
 save(tt, file="./dat/pReduce.RData")
 
-
 cat("STATESPACE_FILENAME ../dat/factors.txt
 INITSTATE_FILENAME ../dat/initstate.txt
 ACTIVITIES_FILENAME ../dat/activities.txt
