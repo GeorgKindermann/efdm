@@ -189,14 +189,14 @@ for(i in 1:length(activities))
   
   #the rest is making sure dimensions have correct and sensible names
   lvlnames<-factlvls[[basedimnames[1]]]
-  if(length(basedimnames>1))
+  if(length(basedimnames)>1) #gk length(basedimnames>1)
     for(j in 2:length(basedimnames))
     {
       lvlnames.more<-factlvls[[basedimnames[j]]]
       lvlnames<-paste(rep(lvlnames,times=length(lvlnames.more)),
                       rep(lvlnames.more,each=length(lvlnames)),sep=".")
     }
-  dimnames(transmat.forthisround)<-c(list(lvlnames,lvlnames),factlvls[otherdimnames])
+  #dimnames(transmat.forthisround)<-c(list(lvlnames,lvlnames),factlvls[otherdimnames]) #gk
   transmats<-c(transmats,list(transmat.forthisround))
   names(transmats)[i]<-actnames[i]
 }
@@ -213,6 +213,7 @@ actprobtable<-read.table(ACTPROBS_FILENAME,header=TRUE)
 #this next merge is a bit dumb but the fixing of factor levels and ordering
 #needs to be done for both, so I'm doing it at once
 statespace<-merge(statespace,actprobtable)
+rm(actprobtable) #gk
 for(fname in factnames)
   statespace[[fname]]<-factor(statespace[[fname]],
                               levels=factlvls[[fname]],ordered=TRUE)

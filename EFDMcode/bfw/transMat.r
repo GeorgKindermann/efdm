@@ -9,8 +9,10 @@ transMatWP <- function(x, weight, prior) {
     tmp <- apply(freq, 1:i, sum)
     #if(weight[i-1] == 1) {
       t1 <- which(colSums(tmp) == 0, arr.ind = TRUE)
+      if(NROW(t1) > 0) {
       t1 <- matrix(t1, ncol=NCOL(t1))
       tmp[cbind(rep(seq_len(NROW(tmp)), each = NROW(t1)), t1[rep(1:nrow(t1), NROW(tmp)), ])] <- s[cbind(rep(seq_len(NROW(s)), each = NROW(t1)), t1[rep(1:nrow(t1), NROW(s)), seq_len(min(length(dim(s))-1,NCOL(t1)))])]
+      }
     #}
     tmp <- prop.table(tmp,2:length(dim(tmp)))
     #tmp[is.na(tmp)] <- 0
@@ -55,13 +57,11 @@ getPriorObs <- function(x, di=0, dj=0) {
 
 if(require(MASS)) {
 getPriorLda <- function(x) {
-  tt <- data.frame(x[1:2], apply(x[,c(3:NCOL(x))], 2, as.numeric))
+  tt <- data.frame(x[1:2], do.call(cbind, lapply(x[,c(3:NCOL(x))], function(x) unclass(x))))
   a1 <- lda(as.formula(paste0(names(tt)[1], " ~ ", paste(names(tt)[3:(NCOL(tt)-1)], collapse=" + "))), data=tt, weights=tt[NCOL(tt)])
   a2 <- lda(as.formula(paste0(names(tt)[2], " ~ ", paste(names(tt)[3:(NCOL(tt)-1)], collapse=" + "))), data=tt, weights=tt[NCOL(tt)])
-
-  tt <- expand.grid(sapply(3:(NCOL(x)-1), function(i) as.numeric(levels(x[,i]))))
+  tt <- expand.grid(sapply(3:(NCOL(x)-1), function(i)  seq_along(levels(x[,i]))))
   names(tt) <- names(x[,3:(NCOL(x)-1)])
-
   t1 <- predict(a1, tt)$posterior
   t2 <- predict(a2, tt)$posterior
   tt <- sapply(seq_len(NROW(t1)), function(i) {t1[i,] * rep(t2[i,], each=NCOL(t1))})
@@ -134,17 +134,21 @@ transMat2LT <- function(x, mat) {
 
 if(require(MASS)) {
   fillEmptyTarget <- function(x) {
-    res <- x[0,]
+        res <- x[0,]
     for(j in 1:2) {
-      t1 <- as.data.frame(as.numeric(as.character(setdiff(levels(x[,j]), x[,j]))))
+      t1 <- as.data.frame(setdiff(levels(x[,j]), x[,j]))
       if(NROW(t1) > 0) {
         colnames(t1) <- names(x)[j]
         t2 <- x[0,][seq_len(NROW(t1)),]
         t2[,j] <- factor(t1[,1], levels=levels(t2[,j]), ordered=is.ordered(t2[,j]))
         t2[,NCOL(t2)] <- mean(x[,NCOL(x)])/NROW(t2)/100
         for(i in setdiff(seq_len(NCOL(x)-1), j)) {
-          a <- lda(as.formula(paste0(names(x)[i], " ~ as.numeric(as.character(", names(x)[j],"))")), data=x)
-          t2[,i] <- predict(a, t1)$class
+          t2[,i] <- tryCatch({
+            a <- lda(as.formula(paste0(names(x)[i], " ~ as.numeric(", names(x)[j],")")), data=x)
+            predict(a, t1)$class
+          }, error = function(error_condition) {
+            names(which.max(table(x[,names(x)[i]])))
+          })
         }
         res <- rbind(res, t2)
       }
