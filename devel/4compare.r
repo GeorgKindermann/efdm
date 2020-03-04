@@ -1,12 +1,13 @@
+library(Matrix)
+
+c.factor <- function(..., recursive=TRUE) unlist(list(...), recursive=recursive)
+
 dat <- read.csv("./dat/inventoryData.csv.bz2")
 t1 <- readRDS("./dat/t1.RData")
-if(is.list(t1)) {t1 <- "attr<-"(do.call(Matrix::sparseVector, t1[-1]), names(t1)[1], t1[[1]])}
 state01Stock <- readRDS("./dat/state01Stock.RData")
-if(is.list(state01Stock)) {state01Stock <- "attr<-"(do.call(Matrix::sparseVector, state01Stock[-1]), names(state01Stock)[1], state01Stock[[1]])}
 breaks <- readRDS("./dat/breaks.RData")
-harvRes <- readRDS("./dat/harvRes.RData")
+#harvRes <- readRDS("./dat/harvRes.RData")
 n <- nrow(dat)
-c.factor <- function(..., recursive=TRUE) unlist(list(...), recursive=recursive)
 
 #Area
 sum(t1)
