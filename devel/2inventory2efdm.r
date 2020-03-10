@@ -22,25 +22,16 @@ saveRDS(breaks, file="./dat/breaks.RData")
 #Initial state from where the simulation starts: How much area is in the defined classes
 #I take here timestep 0, but also timestep 1 could be used alternatively
 #Maximum size .Machine$integer.max bzw. 2^53
-tt <- efdmClassGet(dat[,c("volume0","diameter0","temperature","yieldC","yieldNC")], TRUE, breaks)
-tt <- cbind(tt[,1:3], yield=c(tt$yieldC, tt$yieldNC), species=rep(0:1, each=nrow(tt)), area=c(dat[,"area"] * dat$shareC0, dat[,"area"] * (1-dat$shareC0)))
-t0 <- efdmDimGet(colnames(tt)[-ncol(tt)],  breaks)
-if(TRUE) {   #Sparse array
-  tt <- aggregate(tt["area"], list(i=efdmIndexGet(tt[-ncol(tt)], t0)), sum)
-  state0Area <- Matrix::sparseVector(tt$area, tt$i, prod(t0))
-} else {     #Dense array
-  state0Area <- as.vector(xtabs(area ~ ., data.frame(tt["area"], Map(factor, tt[-ncol(tt)], lapply(t0-1, seq, from=0)))))
-}
+tt <- cbind(dat[,c("volume0","diameter0","temperature")], yield=c(dat$yieldC, dat$yieldNC), species=rep(0:1, each=nrow(dat)), area=c(dat[,"area"] * dat$shareC0, dat[,"area"] * (1-dat$shareC0)))
+colnames(tt) <- sub("[01]$", "", colnames(tt))
+state0Area <- efdmStateGet(tt, "area", breaks, TRUE)
 #object.size(state0Area)
-attr(state0Area, "dimS") <- t0
 saveRDS(state0Area, file="./dat/state0Area.RData", compress="xz")
-rm(tt, t0)
+rm(tt)
 
 #Transition Probabilities
-transition <- new.env(parent=emptyenv())
-#
-i <- c("area","stock","harvest","residuals")
-tmp <- aggregate(cbind(areaC0=shareC0*area, areaC1=shareC1*area, area, stock=(dat$volume0+dat$volume1)/2*area, harvest=harvest*area, residuals=residuals*area) ~ volume0 + volume1 + diameter0 + diameter1 + yieldC + yieldNC, dat, sum)
+i <- c("area","harvest","residuals")
+tmp <- aggregate(cbind(areaC0=shareC0*area, areaC1=shareC1*area, area, harvest=harvest*area, residuals=residuals*area) ~ volume0 + volume1 + diameter0 + diameter1 + yieldC + yieldNC, dat, sum)
 t0 <- pmin(1, tmp$areaC1/tmp$areaC0)
 t0[is.na(t0)] <- 0
 t1 <- pmin(1, (tmp$area-tmp$areaC1)/(tmp$area-tmp$areaC0))
@@ -53,44 +44,17 @@ tmp  <- rbind(data.frame(tmp[j], yield0=tmp$yieldC, yield1=tmp$yieldC, area = tm
 , data.frame(tmp[j], yield0=tmp$yieldNC, yield1=tmp$yieldC, area = (tmp$area - tmp$areaC0) * (1-t1), species0 = 1, species1 = 0, k))
 tmp <- tmp[tmp$area > 0,]
 tmp[i[-1]] <- tmp[i[-1]] * tmp[,i[1]]
-rm(j,k,t0,t1)
-#
-t0 <- efdmDimGet(grep("[01]$", colnames(tmp), value=TRUE),  breaks)
-transition$dimS <- t0
-tmp <- aggregate(. ~ from + to, data.frame(from = efdmIndexGet(efdmClassGet(tmp[,endsWith(colnames(tmp), "0")], TRUE, breaks), t0)
- , to = efdmIndexGet(efdmClassGet(tmp[,endsWith(colnames(tmp), "1")], TRUE, breaks), t0)
- , tmp[match(i, colnames(tmp))]), sum)
-#
-tt <- aggregate(cbind(area,stock) ~ idx, cbind(tmp[c("area","stock")], idx=c(tmp$from, tmp$to)), sum)
-tt$stock <- tt$stock / tt$area
-if(TRUE) { #Sparse
-  state01Stock <- Matrix::sparseVector(tt$stock, tt$idx, prod(t0))
-} else {   #Dense
-  state01Stock <- "[<-"(numeric(prod(t0)), tt$idx, tt$stock)
-}
-#object.size(state01Stock)
-attr(state01Stock, "dimS") <- t0
-saveRDS(state01Stock, file="./dat/state01Stock.RData", compress="xz")
-#
-tmp[i[-1]] <- tmp[i[-1]] / tmp[,i[1]]
-tt <- aggregate(area~from, tmp, sum)
-tmp$share <- tmp$area / tt$area[findInterval(tmp$from, tt$from)]
-tmp <- tmp[,c("from","to","share","harvest","residuals")]
-tmp <- tmp[order(tmp$to),]
-rm(tt, i)
-#
-i <- tmp$share == 1 #All to one
-transition$allToOne <- tmp[i,c("from","to","harvest","residuals")]
-tmp <- tmp[!i,]
-i <- aggregate(cbind(n=from) ~ to, tmp, length)
-i <- i$n[match(tmp$to, i$to)] < 5 #N split in some and many
-transition$fromSome <- split(tmp[i,], ave(tmp$to[i], tmp$to[i], FUN=seq_along))
-transition$fromMany <- do.call(rbind, unname(lapply(split(tmp[!i,], tmp$to[!i]), function(x) data.frame(I(list(x$from)), x$to[1], unname(rbind(as.list(x[,-1:-2])))))))
-colnames(transition$fromMany) <- colnames(tmp)
-attributes(transition$fromMany$from) <- NULL
-#Maybe add also possibility to store it in a dense matrix
-#object.size(tmp)
-#object.size(transition$fromSome)
-#object.size(transition$fromMany)
+transition <- efdmTransitionGet(tmp, area="area", flow=c("harvest","residuals"), t0="0", t1="1", breaks=breaks)
 saveRDS(transition, file="./dat/transition.RData", compress="xz")
-rm(tmp, i, t0)
+rm(i,j,k,t0,t1)
+#
+state01Stock <- c(0, breaks$volume) + c(diff(c(0, breaks$volume))/2, 0)
+tt <- with(tmp, data.frame(area, volume = c(volume0, volume1)))
+t0 <- efdmStateGet(tt, "area", breaks, FALSE)
+tt$area <- tt$area * tt$volume
+tt <- efdmStateGet(tt, "area", breaks, FALSE) / t0
+i <- is.finite(tt)
+state01Stock[i] <- tt[i]
+attr(state01Stock, "dimS") <- attr(t0, "dimS")
+saveRDS(state01Stock, file="./dat/state01Stock.RData", compress="xz")
+rm(tt, t0, i, tmp)
