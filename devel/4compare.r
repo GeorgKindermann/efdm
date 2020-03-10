@@ -72,3 +72,30 @@ gc(reset = TRUE)
 res <- asum(tt, 3:5)
 gc() #0.6 Mb
 as.array(res, TRUE)
+
+
+
+t2 <- readRDS("./dat/t2.RData")
+sum(t1)
+sum(t2)
+tt <- spray(as.matrix(efdmIndexInv(t1@i, attr(t1, "dimS"))), t1@x)
+round(as.array(asum(tt, 3:5), TRUE))
+tt <- spray(as.matrix(efdmIndexInv(t2@i, attr(t2, "dimS"))), t2@x)
+round(as.array(asum(tt, 3:5), TRUE))
+
+flow12Harv <- readRDS("./dat/harvest12.RData")
+sum(flow01Harv)
+sum(flow12Harv)
+tt <- spray(as.matrix(efdmIndexInv(flow01Harv@i, attr(flow01Harv, "dimS"))), flow01Harv@x)
+round(as.array(asum(tt, 3:5), TRUE))
+tt <- spray(as.matrix(efdmIndexInv(flow12Harv@i, attr(flow12Harv, "dimS"))), flow12Harv@x)
+round(as.array(asum(tt, 3:5), TRUE))
+
+flow12Resid <- readRDS("./dat/residuals12.RData")
+sum(flow01Resid)
+sum(flow12Resid)
+tt <- spray(as.matrix(efdmIndexInv(flow01Resid@i, attr(flow01Resid, "dimS"))), flow01Resid@x)
+round(as.array(asum(tt, 3:5), TRUE))
+tt <- spray(as.matrix(efdmIndexInv(flow12Resid@i, attr(flow12Resid, "dimS"))), flow12Resid@x)
+round(as.array(asum(tt, 3:5), TRUE))
+
