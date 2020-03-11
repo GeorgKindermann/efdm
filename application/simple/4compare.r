@@ -1,4 +1,4 @@
-source("efdm.r")
+source("../../efdm.r")
 
 dat <- read.csv("./dat/inventoryData.csv.bz2")
 t1 <- readRDS("./dat/t1.RData")

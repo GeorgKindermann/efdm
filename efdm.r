@@ -56,9 +56,10 @@ efdmStateGet <- function(x, what="area", breaks=breaks, sparse=TRUE) {
   x
 }
 
-efdmTransitionGet <- function(x, area="area", flow=c("harvest","residuals"), t0="0", t1="1", breaks=breaks) {
+efdmTransitionGet <- function(x, area="area", flow=c("harvest","residuals"), t0="0", t1="1", breaks=breaks, model=c("qda","lda"), dimWgt=1) {
   env <- new.env(parent=emptyenv())
   env$dimS <- efdmDimGet(colnames(x)[endsWith(colnames(x), t0)], breaks)
+  env$dimWgt <- rep_len(dimWgt, length(env$dimS))
   x <- aggregate(. ~ from + to, data.frame(from = efdmIndexGet(efdmClassGet(x[,endsWith(colnames(x), t0)], TRUE, breaks), env$dimS)
    , to = efdmIndexGet(efdmClassGet(x[,endsWith(colnames(x), t1)], TRUE, breaks), env$dimS)
    , tmp[match(c(area,flow), colnames(tmp))]), sum)
@@ -66,11 +67,17 @@ efdmTransitionGet <- function(x, area="area", flow=c("harvest","residuals"), t0=
   x$share <- x$area / tmp$area[match(x$from, tmp$from)]
   x[flow] <- x[flow] / x[,area]
   env$simple <- x[c("from","to","share",flow)]
-  tt <- data.frame(efdmIndexInv(x$from, env$dimS), efdmIndexInv(x$to, env$dimS))
-  env$lda <- lapply(setNames(names(env$dimS), names(env$dimS)), function(i) {
-    lda(reformulate(termlabels = names(env$dimS), response = paste0(i,".1"))
-      , tt, weights= x[area])
-  })
+  if(!is.null(model) && !is.na(model[1])) {
+    fun <- function(i, j) {
+      match.fun(model[j])(reformulate(termlabels = names(env$dimS)
+                , response = paste0(i,".1")), tt, weights= x[area])}
+    tt <- data.frame(efdmIndexInv(x$from,env$dimS),efdmIndexInv(x$to,env$dimS))
+    env$model <- lapply(setNames(names(env$dimS), names(env$dimS)), function(i){
+      for(j in seq_along(model)) {
+        try(ret <- fun(i,j), TRUE)
+        if(exists("ret", inherits = FALSE)) return(ret)
+      }})
+  }
   env
 }
 
@@ -87,15 +94,17 @@ efdmNextArea <- function(t0, transition, share="share") {
   i <- if(is.vector(t0)) {which(t0 != 0)} else {t0@i}
   i <- i[!i %in% rowSums(expand.grid(from, static))]
   if(length(i) > 0) {
-    from <- as.data.frame(efdmIndexInv(i, attr(t0, "dimS")))
-    to <- do.call(cbind, lapply(transition$lda, function(f) {
-      x <- predict(f, from)$class #Maybe move to more than one cell
-      as.numeric(levels(x))[x] }))
-    to <- efdmIndexGet(cbind(to, from[setdiff(colnames(from), colnames(to))])
-                     , attr(t0, "dimS"))
-    from <- efdmIndexGet(from, attr(t0, "dimS"))
-    tt <- aggregate(as.vector(t0[from]), list(to=to), sum)
-    t1[tt$to] <- t1[tt$to] + tt$x
+    if(exists("model", envir = transition)) {
+      from <- as.data.frame(efdmIndexInv(i, attr(t0, "dimS")))
+      to <- do.call(cbind, lapply(transition$model, function(f) {
+        x <- predict(f, from)$class #Maybe move to more than one cell
+        as.numeric(levels(x))[x] }))
+      to <- efdmIndexGet(cbind(to, from[setdiff(colnames(from), colnames(to))])
+                       , attr(t0, "dimS"))
+      from <- efdmIndexGet(from, attr(t0, "dimS"))
+      tt <- aggregate(as.vector(t0[from]), list(to=to), sum)
+      t1[tt$to] <- t1[tt$to] + tt$x
+    } else {t1[i] <- t1[i] + t0[i]}
   }
   t1
 }
@@ -117,7 +126,7 @@ efdmNextFlow <- function(t0, transition, flow="harvest", share="share") {
     iFrom <- efdmIndexInv(i, attr(t0, "dimS"))
     iFrom <- iFrom[,match(colnames(tFrom), colnames(iFrom))]
     res[i] <- res[i] + t0[i] * vapply(seq_along(i), function(k) {
-      j <- rowSums(abs(sweep(tFrom, 2, iFrom[k,])))
+      j <- abs(sweep(tFrom, 2, iFrom[k,])) %*% transition$dimWgt
       mean(tt$x[which(j == min(j))])}, numeric(1))
   }
   res

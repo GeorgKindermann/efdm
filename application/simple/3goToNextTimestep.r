@@ -1,4 +1,4 @@
-source("efdm.r")
+source("../../efdm.r")
 
 state0Area <- readRDS("./dat/state0Area.RData")
 transition <- readRDS("./dat/transition.RData")
