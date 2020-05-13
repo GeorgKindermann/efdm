@@ -1,5 +1,9 @@
+require(distances)
+
 require(Matrix)
 require(MASS)
+require(parallel)
+
 
 c.factor <- function(..., recursive=TRUE) unlist(list(...), recursive=recursive)
 
@@ -81,7 +85,7 @@ efdmTransitionGet <- function(x, area="area", flow=c("harvest","residuals"), t0=
   env
 }
 
-efdmNextArea <- function(t0, transition, share="share") {
+efdmNextArea <- function(t0, transition, share="share", nMinToGo=1, nMaxToGo=3, pMinToGo=0.05, lowMem=FALSE, maxNeighbours=7) {
   t1 <- if(is.vector(t0)) {numeric(length(t0))
         } else {Matrix::sparseVector(0, 1, length(t0))}
   attr(t1, "dimS") <- attr(t0, "dimS")
@@ -90,21 +94,109 @@ efdmNextArea <- function(t0, transition, share="share") {
   to <- efdmIndexGet(efdmIndexInv(transition$simple$to, transition$dimS), attr(t0, "dimS"))
   tt <- aggregate(as.vector(t0[rowSums(expand.grid(from, static))]) * transition$simple[,share], list(to=rowSums(expand.grid(to, static))), sum)
   tt <- tt[tt$x > 0,]
-  t1[tt$to] <- t1[tt$to] + tt$x
+  t1[tt$to] <- as.vector(t1[tt$to]) + tt$x
   i <- if(is.vector(t0)) {which(t0 != 0)} else {t0@i}
   i <- i[!i %in% rowSums(expand.grid(from, static))]
   if(length(i) > 0) {
     if(exists("model", envir = transition)) {
-      from <- as.data.frame(efdmIndexInv(i, attr(t0, "dimS")))
-      to <- do.call(cbind, lapply(transition$model, function(f) {
-        x <- predict(f, from)$class #Maybe move to more than one cell
-        as.numeric(levels(x))[x] }))
-      to <- efdmIndexGet(cbind(to, from[setdiff(colnames(from), colnames(to))])
-                       , attr(t0, "dimS"))
-      from <- efdmIndexGet(from, attr(t0, "dimS"))
-      tt <- aggregate(as.vector(t0[from]), list(to=to), sum)
-      t1[tt$to] <- t1[tt$to] + tt$x
-    } else {t1[i] <- t1[i] + t0[i]}
+      if(lowMem) {
+        lapply(i, function(i) {
+          from <- as.data.frame(efdmIndexInv(i, attr(t0, "dimS")))
+          to <- lapply(setNames(seq_along(transition$model), names(transition$model)), function(i) {
+            f <- transition$model[[i]]
+            if(is.null(f)) {setNames(1,from[,names(transition$model)[i]])
+            } else {
+              x <- predict(f, from)$posterior
+              names(x) <- colnames(x)
+              proportions(head(x[order(-x)], min(nMaxToGo, max(nMinToGo, sum(x >= pMinToGo)))))}
+          })
+          toi <- efdmIndexGet(expand.grid(lapply(to, function(x) as.integer(names(x)))), attr(t1, "dimS"))
+          t1[toi] <<- as.vector(t1[toi]) + as.vector(t0[i]) * apply(expand.grid(to), 1, prod)
+        })
+      } else {
+        from <- as.data.frame(efdmIndexInv(i, attr(t0, "dimS")))
+        to <- lapply(setNames(seq_along(transition$model), names(transition$model)), function(i) {
+          f <- transition$model[[i]]
+          if(is.null(f)) {setNames(rep(1,nrow(from)),from[,names(transition$model)[i]])
+          } else {
+            apply(predict(f, from)$posterior, 1, function(x) proportions(head(x[order(-x)], min(nMaxToGo, max(nMinToGo, sum(x >= pMinToGo))))))
+          }})
+        rm(from)
+        x <- do.call(cbind, to)
+        to <- do.call(cbind, lapply(to, function(x) if(is.list(x)) lapply(x, function(x) as.integer(names(x))) else as.integer(names(x))))
+        x <- apply(x, 1, function(x) apply(expand.grid(x), 1, prod))
+        to <- apply(to, 1, function(x) efdmIndexGet(expand.grid(x), attr(t1, "dimS")))
+        x <- mapply("*", x, as.vector(t0[i]))
+        to <- aggregate(unlist(x), list(to=unlist(to)), sum)
+        rm(x)
+        t1[to$to] <- as.vector(t1[to$to]) + to$x
+      }
+    } else if(exists("similar", envir = transition)) {
+      from <- as.matrix(as.data.frame(efdmIndexInv(i, attr(t0, "dimS"))))
+      from <- from[,names(transition$dimS)]
+      fromObsI <- unique(transition$simple$from)
+      fromObs <- as.matrix(as.data.frame(efdmIndexInv(fromObsI, transition$dimS)))
+      x <- rbind(fromObs, from)
+      x <- distances(x * transition$dimWgt[col(x)])
+      idx <- seq_len(nrow(from))+nrow(fromObs)
+      to <- nearest_neighbor_search(x, maxNeighbours, idx, seq_len(length(fromObsI)))
+      to <- lapply(seq_along(idx), function(j) {
+        y <- x[idx[j],to[,j]]
+        to[,j][y == y[1]]
+      })
+      rm(x, idx)
+#      to <- mclapply(split(from, seq_len(nrow(from))), function(y) {
+#        x <- abs(fromObs - y[col(fromObs)]) %*% transition$dimWgt
+#        which(x == min(x))
+#      })
+      transition$simple <- transition$simple[order(transition$simple$from),]
+      x <- cbind(1L+findInterval(fromObsI[unlist(to)]-1, transition$simple$from), findInterval(fromObsI[unlist(to)], transition$simple$from))
+      x <- mapply(seq, x[,1], x[,2])
+      to <- unname(split(x, rep(seq_along(to), lengths(to))))
+      rm(x)
+      to <- lapply(to, function(y) {j <- unlist(y)
+        list(transition$simple$to[j], proportions(transition$simple$share[j])
+           , transition$simple$from[j]) #Only needed for relativ shift
+      })
+#      to <- mclapply(to, function(y) {
+#        j <- which(transition$simple$from %in% fromObsI[y])
+#        list(transition$simple$to[j], proportions(transition$simple$share[j])
+#           , transition$simple$from[j]) #Only needed for relativ shift
+#      })
+      to <- do.call(rbind, to)
+      to[,2] <- mapply("*", to[,2], as.vector(t0[i]))
+      if(exists("absolute", envir = transition) & transition$absolute) {
+        to[,1] <- mapply(function(x,y) {
+          tt <- efdmIndexInv(x, transition$dimS)
+          tt[!transition$similar[col(tt)]] <- rep(y[!transition$similar], each=nrow(tt))
+          efdmIndexGet(tt, attr(t1, "dimS"))
+        }, to[,1], split(from, seq_len(nrow(from))))
+      } else {
+        to[,1] <- mapply(function(x,y) {
+          tt <- x + y[col(x)]
+          j <- tt >= transition$dimS[col(tt)]
+          tt[j] <- (transition$dimS - 1)[col(tt)][j]
+          j <- tt < 0
+          tt[j] <- 0
+          efdmIndexGet(tt, attr(t1, "dimS"))}, 
+          mapply(function(x,y) {
+            efdmIndexInv(x, transition$dimS) - efdmIndexInv(y, transition$dimS)},
+            to[,1], to[,3]), split(from, seq_len(nrow(from))))
+      }
+      to <- aggregate(unlist(to[,2]), list(to=unlist(to[,1])), sum)
+      t1[to$to] <- as.vector(t1[to$to]) + to$x
+    } else if(exists("shifter", envir = transition)) {
+      from <- as.matrix(as.data.frame(efdmIndexInv(i, attr(t0, "dimS"))))
+      from <- from[,names(transition$dimS)]
+      to <- from + transition$shifter[col(from)]
+      j <- to >= transition$dimS[col(to)]
+      to[j] <- (transition$dimS - 1)[col(to)][j]
+      j <- to < 0
+      to[j] <- 0
+      to <- efdmIndexGet(to, attr(t1, "dimS"))
+      to <- aggregate(as.vector(t0[i]), list(to=to), sum)
+      t1[to$to] <- as.vector(t1[to$to]) + to$x
+    } else {t1[i] <- as.vector(t1[i]) + t0[i]}
   }
   t1
 }
