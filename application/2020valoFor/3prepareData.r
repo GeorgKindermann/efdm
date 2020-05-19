@@ -100,15 +100,12 @@ rm(tt)
 
 #Transition Probabilities
 tt <- with(dat, data.frame(volume0=v0/ifelse(ant0>0, ant0, 1), volume1=v1/ifelse(ant1>0, ant1, 1), diameter0=d0, diameter1=d1, yield=si, speciesGroup, owner, hangneig, rueck, mantyp, seehoehe))
-tt <- cbind(dat[,c("rw","hw","pbfl","ant0","ant1","area","removalTyp")], efdmClassGet(tt, TRUE, breaks))
+#tt <- cbind(dat[,c("rw","hw","pbfl","ant0","ant1","area","removalTyp")], efdmClassGet(tt, TRUE, breaks))
+tt <- cbind(dat[,c("rw","hw","pbfl","ant0","ant1","area","removalTyp")], tt)
 tt$diameter0[is.na(tt$diameter0)] <- -1L #or addNA
 tt$diameter1[is.na(tt$diameter1)] <- -1L
 
 t1 <- aggregate(cbind(a0=ant0*area, a1=ant1*area) ~ rw + hw + pbfl + yield + owner + hangneig + rueck + mantyp + seehoehe + speciesGroup + removalTyp + volume0 + volume1 + diameter0 + diameter1, tt, sum)
-
-x <- t1[t1$rw==192 & t1$hw==52 & t1$pbfl==16,]
-z <- c(34487)
-z <- c(5119,5531,6335,6722,8684,8905,9103,9594,10216,10218,15081,16864,20627,41370,46469,61146,81854)
 
 t2 <- aggregate(seq_len(nrow(t1)), list(t1$rw, t1$hw, t1$pbfl), function(z) {
   x <- t1[z,]
@@ -126,31 +123,12 @@ t2 <- aggregate(seq_len(nrow(t1)), list(t1$rw, t1$hw, t1$pbfl), function(z) {
 #t2 <- apply(t2$x, 2, function(x) do.call(cbind, x)) #Fuer einen Punkt
 t2 <- do.call(rbind, apply(t2$x, 1, function(x) do.call(cbind, x)))
 t2 <- aggregate(area ~ ., t2, sum)
-#Sparse From mit allen + 0, sarse to nur mit denen mit 1 am Ende
-i0 <- c("yield", "owner", "hangneig", "rueck", "mantyp", "seehoehe", "speciesGroup0", "volume0", "diameter0")
-#i1 <- c("speciesGroup1", "volume1", "diameter1") #Bring nicht viel da eh auf einen Wert umtransformiert wird
-i1 <- c("yield", "owner", "hangneig", "rueck", "mantyp", "seehoehe", "speciesGroup1", "volume1", "diameter1")
-x <- aggregate(t2["area"], list(from=efdmIndexGet(t2[i0], efdmDimGet(i0, breaks)), to=efdmIndexGet(t2[i1], efdmDimGet(i1, breaks))), sum)
-
-env <- new.env(parent=emptyenv())
-env$dimS <- efdmDimGet(i0, breaks)
-env$dimWgt <- rep_len(1, length(env$dimS))
-
-tmp <- aggregate(area~from, x, sum)
-x$share <- x$area / tmp$area[match(x$from, tmp$from)]
-env$simple <- x[c("from","to","share")]
-
-model <- c("qda","lda")
-fun <- function(i, j) {
-  match.fun(model[j])(reformulate(termlabels = names(env$dimS)
-                                , response = paste0(i,".1")), tt, weights= x[area])}
-tt <- data.frame(efdmIndexInv(x$from,env$dimS),efdmIndexInv(x$to,env$dimS))
-env$model <- lapply(setNames(names(env$dimS), names(env$dimS)), function(i){
-  for(j in seq_along(model)) {
-    try(ret <- fun(i,j), TRUE)
-    if(exists("ret", inherits = FALSE)) return(ret)
-  }})
+env <- efdmTransitionGet(t2, area="area", t0="0", t1="1", breaks=breaks, getArea=TRUE)
+env <- efdmTransitionXda(env)
+#env <- efdmTransitionSimilar(env, absolute=TRUE, wgt=c(5,10,1,1,1,1,10,7,5), fixed=c(TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,FALSE,FALSE,FALSE))
+#env <- efdmTransitionShifter(env, c(0, 0, 0, 0, 0, 0, 0, 1, 1))
 saveRDS(env, file="./dat/transition.RData", compress="xz")
+
 
 #t1 <- efdmNextArea(state0Area, env, "share")
 
