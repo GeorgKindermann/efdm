@@ -100,6 +100,23 @@ efdmTransitionShifter <- function(env, shift=0) {
   env$shifter <- rep_len(shift, length(env$dimS))
 }
 
+efdmTransitionFlow <- function(x, area="area", removalTyp="removalTyp", skip="no", t0="0", t1="1", breaks=breaks, getArea=TRUE) {
+  env <- new.env(parent=emptyenv())
+  c0 <- grep(paste0("^", removalTyp, "|^", area, "|", t1, "$"), colnames(x), value = TRUE, invert =TRUE)
+  c1 <- grep(paste0("^", removalTyp, "|^", area, "|", t0, "$"), colnames(x), value = TRUE, invert =TRUE)
+  env$dimS <- efdmDimGet(c0, breaks)
+  types <- setdiff(levels(x$removalTyp), skip)
+  y <- matrix(0, nrow(x), length(types)+1, dimnames=list(NULL, c(types, "area")))
+  i <- match(x$removalTyp, types)
+  j <- !is.na(i)
+  y[cbind(seq_len(nrow(y))[j], i[j])] <- x$volume0[j] * x[j,area]
+  y[,ncol(y)] <- x[,area]
+  x <- aggregate(y, list(from = efdmIndexGet(efdmClassGet(x[c0], TRUE, breaks), env$dimS), to = efdmIndexGet(efdmClassGet(x[c1], TRUE, breaks), env$dimS)), sum)
+  x[,2+seq_along(types)] <- x[,2+seq_along(types)] / x$area
+  x$area <- NULL
+  env$flow <- x
+  env
+}
 
 efdmNextArea <- function(t0, transition, nMinToGo=1, nMaxToGo=3, pMinToGo=0.05, maxNeighbours=7) {
   staticN <- setdiff(names(attr(t0, "dimS")), names(transition$dimS))
@@ -159,7 +176,8 @@ efdmNextArea <- function(t0, transition, nMinToGo=1, nMaxToGo=3, pMinToGo=0.05, 
       to <- unname(split(x, rep(seq_along(to), lengths(to))))
       rm(x)
       to <- lapply(to, function(y) {j <- unlist(y)
-        list(transition$simple$to[j], proportions(transition$simple$share[j])
+        #list(transition$simple$to[j], proportions(transition$simple$share[j])
+        list(transition$simple$to[j], proportions(transition$simple$area[j])
            , transition$simple$from[j]) #Only needed for relativ shift
       })
       to <- do.call(rbind, to)
