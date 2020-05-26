@@ -124,12 +124,14 @@ t2 <- aggregate(seq_len(nrow(t1)), list(t1$rw, t1$hw, t1$pbfl), function(z) {
 t2 <- do.call(rbind, apply(t2$x, 1, function(x) do.call(data.frame, x)))
 t2 <- aggregate(area ~ ., t2, sum)
 env <- efdmTransitionGet(t2[,setdiff(colnames(t2), "removalTyp")], area="area", t0="0", t1="1", breaks=breaks, getArea=TRUE)
-#env <- efdmTransitionXda(env)
-env <- efdmTransitionSimilar(env, absolute=TRUE, wgt=c(5,10,1,1,1,1,10,7,5), fixed=c(TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,FALSE,FALSE,FALSE))
-#env <- efdmTransitionShifter(env, c(0, 0, 0, 0, 0, 0, 0, 1, 1))
+#efdmTransitionXda(env)
+efdmTransitionSimilar(env, absolute=TRUE, wgt=c(5,10,1,1,1,1,10,7,5), fixed=c(TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,FALSE,FALSE,FALSE))
+#efdmTransitionShifter(env, c(0, 0, 0, 0, 0, 0, 0, 1, 1))
 saveRDS(env, file="./dat/transition.RData", compress="xz")
 
 #Removals during transitions
 envF <- efdmTransitionFlow(t2[c("area", "volume0", "volume1", "diameter0", "diameter1", "speciesGroup0", "speciesGroup1", "removalTyp", "yield")], breaks=breaks)
+efdmTransitionFlowMod(envF)
 saveRDS(envF, file="./dat/flow.RData", compress="xz")
+
 

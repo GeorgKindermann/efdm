@@ -7,15 +7,11 @@ transition <- readRDS("./dat/transition.RData")
 flow <- readRDS("./dat/flow.RData")
 
 
-t0 <- state0Area
-t1 <- efdmNextState(t0, efdmNextArea(t0, transition))
-
-t0 <- t1
-nMinToGo <- 1
-nMaxToGo <- 3
-pMinToGo <- 0.05
-maxNeighbours <- 7
-
+t0 <- efdmNextState(state0Area, efdmNextArea(state0Area, transition))
+tt <- efdmNextArea(t0, transition)
+t1 <- efdmNextState(t0, tt)
+t0_1f <- efdmNextFlow(tt) * tt$area
+colSums(t0_1f)/7
 
 f <- transition$model[[1]]
 f <- transition$model[[7]]

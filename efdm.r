@@ -87,7 +87,6 @@ efdmTransitionXda <- function(env, model=c("qda","lda"), absolute=FALSE, dropAre
     }})
   env$absolute <- absolute
   if(dropArea) {env$simple$area <- NULL}
-  env
 }
 
 efdmTransitionSimilar <- function(env, absolute=TRUE, wgt=1, fixed=FALSE) {
@@ -100,7 +99,8 @@ efdmTransitionShifter <- function(env, shift=0) {
   env$shifter <- rep_len(shift, length(env$dimS))
 }
 
-efdmTransitionFlow <- function(x, area="area", removalTyp="removalTyp", skip="no", t0="0", t1="1", breaks=breaks, getArea=TRUE) {
+efdmTransitionFlow <- function(x, area="area", removalTyp="removalTyp", skip="no", t0="0", t1="1", breaks="breaks", getArea=TRUE) {
+  if(is.character(breaks)) {breaks <- get(breaks, globalenv())}
   env <- new.env(parent=emptyenv())
   c0 <- grep(paste0("^", removalTyp, "|^", area, "|", t1, "$"), colnames(x), value = TRUE, invert =TRUE)
   c1 <- grep(paste0("^", removalTyp, "|^", area, "|", t0, "$"), colnames(x), value = TRUE, invert =TRUE)
@@ -113,9 +113,27 @@ efdmTransitionFlow <- function(x, area="area", removalTyp="removalTyp", skip="no
   y[,ncol(y)] <- x[,area]
   x <- aggregate(y, list(from = efdmIndexGet(efdmClassGet(x[c0], TRUE, breaks), env$dimS), to = efdmIndexGet(efdmClassGet(x[c1], TRUE, breaks), env$dimS)), sum)
   x[,2+seq_along(types)] <- x[,2+seq_along(types)] / x$area
-  x$area <- NULL
+  if(!getArea) {x$area <- NULL}
   env$flow <- x
   env
+}
+
+efdmTransitionFlowMod <- function(env) {
+  i <- match(c("from", "to", "area"), colnames(env$flow))
+  from <- efdmIndexInv(env$flow$from, env$dimS)
+  to <- efdmIndexInv(env$flow$to, env$dimS)
+  colnames(from) <- paste0("from.", colnames(from))
+  colnames(to) <- paste0("to.", colnames(to))
+  y <- data.frame(removalTotal=rowSums(env$flow[-i]), from, to)
+  y <- y[,!duplicated(as.matrix(y), MARGIN = 2)]
+  #a <- glm(removalTotal ~ .), data=y, family=quasipoisson(link = "log"))
+  a0 <- lm(removalTotal ~ ., data=y, weight=env$flow$area)
+  env$nls <- coef(nls(removalTotal ~ I(pmax(0, c0 + c1*predict(a0))), data=y, start=list(c0=0,c1=1), weight=env$flow$area))
+  env$lm <- coef(a0)
+  rm(a0)
+  z <- proportions(as.matrix(env$flow[-i]), 1)
+  z[apply(is.nan(z), 1, all),] <- rep(1/ncol(z), ncol(z))
+  env$glm <- lapply(asplit(z, 2), function(d) coef(glm(SHARE ~ ., data=cbind(SHARE=d, y), family=quasibinomial(link = "logit"))))
 }
 
 efdmNextArea <- function(t0, transition, nMinToGo=1, nMaxToGo=3, pMinToGo=0.05, maxNeighbours=7) {
@@ -218,7 +236,9 @@ efdmNextArea <- function(t0, transition, nMinToGo=1, nMaxToGo=3, pMinToGo=0.05, 
       res <- rbind(res, data.frame(from=i, to=i, area=t0[i]))
     }
   }
-  aggregate(area ~ from + to, res, sum)
+  tt <- aggregate(area ~ from + to, res, sum)
+  attr(tt, "dimS") <- attr(t0, "dimS")
+  tt
 }
 
 efdmNextState <- function(t0, x) {
@@ -230,26 +250,25 @@ efdmNextState <- function(t0, x) {
   t1
 }
 
-
-efdmNextFlow <- function(t0, transition, flow="harvest", share="share") {
-  res <- if(is.vector(t0)) {numeric(length(t0))
-         } else {Matrix::sparseVector(0, 1, length(t0))}
-  attr(res, "dimS") <- attr(t0, "dimS")
-  static <- efdmIndexStatic(setdiff(names(attr(t0, "dimS")), names(transition$dimS)), attr(t0, "dimS"))
-  from <- efdmIndexGet(efdmIndexInv(transition$simple$from, transition$dimS), attr(t0, "dimS"))
-  tt <- aggregate(as.vector(t0[rowSums(expand.grid(from, static))]) * transition$simple[,share] * transition$simple[,flow], list(to=rowSums(expand.grid(from, static))), sum)
-  tt <- tt[tt$x > 0,]
-  res[tt$to] <- tt$x
-  i <- if(is.vector(t0)) {which(t0 != 0)} else {t0@i}
-  i <- i[!i %in% rowSums(expand.grid(from, static))]
-  if(length(i) > 0) {
-    tt <- aggregate(cbind(x = transition$simple[,flow] * transition$simple[,share]), list(from=transition$simple$from), sum)
-    tFrom <- efdmIndexInv(tt$from, transition$dimS)
-    iFrom <- efdmIndexInv(i, attr(t0, "dimS"))
-    iFrom <- iFrom[,match(colnames(tFrom), colnames(iFrom))]
-    res[i] <- res[i] + t0[i] * vapply(seq_along(i), function(k) {
-      j <- abs(sweep(tFrom, 2, iFrom[k,])) %*% transition$dimWgt
-      mean(tt$x[which(j == min(j))])}, numeric(1))
-  }
+efdmNextFlow <- function(tt) {
+  from <- efdmIndexInv(tt$from, attr(tt, "dimS"))
+  to <- efdmIndexInv(tt$to, attr(tt, "dimS"))
+  fromLup <- efdmIndexInv(flow$flow$from, flow$dimS)
+  toLup <- efdmIndexInv(flow$flow$to, flow$dimS)
+  j <-  match(c("from", "to", "area"), colnames(flow$flow))
+  k <- intersect(colnames(to), colnames(toLup))
+  from <- from[,k]
+  to <- to[,k]
+  i <- match(interaction(data.frame(from, to), drop=TRUE), interaction(data.frame(fromLup[,k], toLup[,k]), drop=TRUE))
+  res <- flow$flow[-j][i,]
+  colnames(from) <- paste0("from.", colnames(from))
+  colnames(to) <- paste0("to.", colnames(to))
+  y <- as.matrix(data.frame("(Intercept)" = 1, from, to, check.names = FALSE)[is.na(i),names(flow$lm)])
+  rm(from, to, fromLup, toLup)
+  z <- y %*% flow$lm
+  z <- pmax(0, flow$nls[1] +  z * flow$nls[2])
+  y <- cbind(removalTotal = z, y)
+  z <- proportions(do.call(cbind, lapply(flow$glm, function(f) 1/(1+exp(y[,names(f)] %*% -f)))), 1) * z
+  res[is.na(i),] <- z
   res
 }
