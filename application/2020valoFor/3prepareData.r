@@ -42,6 +42,14 @@ round(with(dat[!is.na(dat$d0) & !is.na(dat$d1),], quantileWeighted(v1/ant1 - v0/
 round(with(dat, quantileWeighted(c(v0/ant0, v1/ant1), c(ant0*area, ant1*area), seq(0, 1, 0.05))))
 breaks$volume <- c(0.1, seq(25, 1700, 25))
 
+tt <- with(dat, aggregate(cbind(v0*area, ant0*area), list(findInterval(v0/ant0, breaks$volume)), sum))
+tt <- data.frame(i=tt[,1], x=tt[,2] / tt[,3])
+a <- loess(x ~ i, tt, control = loess.control(surface = "direct"))
+tt <- approxfun(tt[,1], tt[,2])(0:length(breaks$volume))
+tt[is.na(tt)] <- predict(a, 0:length(breaks$volume))[is.na(tt)]
+breaks$stock <- tt
+rm(tt, a)
+
 #Search for diameter classes
 with(dat[!is.na(dat$d0) & !is.na(dat$d1),], weighted.mean(d1 - d0, (ant0+ant1)*area))
 with(dat[!is.na(dat$d0) & !is.na(dat$d1),], quantileWeighted(d1 - d0, (ant0+ant1)*area, seq(0, 1, 0.05)))
@@ -125,7 +133,7 @@ t2 <- do.call(rbind, apply(t2$x, 1, function(x) do.call(data.frame, x)))
 t2 <- aggregate(area ~ ., t2, sum)
 env <- efdmTransitionGet(t2[,setdiff(colnames(t2), "removalTyp")], area="area", t0="0", t1="1", breaks=breaks, getArea=TRUE)
 #efdmTransitionXda(env)
-efdmTransitionSimilar(env, absolute=TRUE, wgt=c(5,10,1,1,1,1,10,7,5), fixed=c(TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,FALSE,FALSE,FALSE))
+efdmTransitionSimilar(env, absolute=TRUE, wgt=c(5,99,1,1,1,1,10,7,5), fixed=c(TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,FALSE,FALSE,FALSE))
 #efdmTransitionShifter(env, c(0, 0, 0, 0, 0, 0, 0, 1, 1))
 saveRDS(env, file="./dat/transition.RData", compress="xz")
 
